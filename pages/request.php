@@ -1,12 +1,39 @@
 <?php 
-// NOTE: Assuming manager objects are available from the parent controller (adminhome.php).
+// NOTE: Assuming $reqObj, $employeeManager, $depObj, $posObj are available from the parent controller (adminhome.php).
 
-// --- 1. HANDLE CSV IMPORT SUBMISSION (Revised Logic) ---
+// --- 0. HANDLE AJAX SEARCH (CRITICAL FIX: MUST BE AT THE TOP) ---
+// This intercepts the request before any HTML is loaded to return pure JSON.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'search_employees') {
+    $query = $_GET['search_query'] ?? '';
+    $deptFilter = $_GET['dept_filter'] ?? '';
+
+    // Fetch all results
+    $results = $employeeManager->getAllEmployeesDetails($query);
+
+    // Filter Data: Remove 'Deleted' users and apply Department Filter
+    $filteredResults = array_filter($results, function($emp) use ($deptFilter) {
+        // 1. Exclude Deleted users
+        if (isset($emp['Status']) && $emp['Status'] === 'Deleted') {
+            return false;
+        }
+        // 2. Apply Dept Filter if set
+        if (!empty($deptFilter) && $emp['DepartmentID'] != $deptFilter) {
+            return false;
+        }
+        return true;
+    });
+
+    // Re-index array for JSON
+    header('Content-Type: application/json');
+    echo json_encode(array_values($filteredResults));
+    exit; // STOP SCRIPT HERE
+}
+
+// --- 1. HANDLE CSV IMPORT SUBMISSION ---
 $csvSuccess = "";
 $csvError = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bulk_import') {
-    
     if (empty($_FILES['csv_file']['name'])) {
         $csvError = "Please select a CSV file to upload.";
     } elseif ($_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
@@ -15,8 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $csvError = "Invalid file type. Only CSV files are allowed.";
     } else {
         $fileTmpPath = $_FILES['csv_file']['tmp_name'];
-        
-        // CRITICAL FIX: Call the manager function instead of inline logic
         $results = $reqObj->bulkImportRegistrations($fileTmpPath);
         
         if (isset($results['error'])) {
@@ -24,12 +49,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             $importedCount = $results['importedCount'];
             $skippedCount = $results['skippedCount'];
-            $csvSuccess = "Bulk Import Complete: <strong>{$importedCount}</strong> new employees added (Inactive). <strong>{$skippedCount}</strong> rows skipped (Invalid data or already exists).";
+            $csvSuccess = "Bulk Import Complete: <strong>{$importedCount}</strong> added. <strong>{$skippedCount}</strong> skipped.";
         }
     }
 }
 
-// --- 2. HANDLE ACTIVATION & PROMOTION SUBMISSIONS (Unmodified) ---
+// --- 2. HANDLE SOFT DELETE (FIXED & IMPLEMENTED) ---
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_employee') {
+    $employeeID = $_POST['delete_id'];
+    
+    // FIX: Using $reqObj instead of undefined $req
+    if ($reqObj->softDelete($employeeID)) {
+        header("Location: adminhome.php?section=request");
+        exit();
+    } else {
+        header("Location: adminhome.php?msg=error");
+        exit();
+    }
+}
+
+// --- 3. HANDLE ACTIVATION & PROMOTION SUBMISSIONS ---
 $promoSuccess = "";
 $promoError = "";
 
@@ -72,9 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $emailSender->sendPromotionNotification($empEmail, $empName, $newPosName, $oldPosName);
 
-                $promoSuccess = "Employee record updated successfully. Leave credits have been recalculated and notification sent.";
+                $promoSuccess = "Employee record updated successfully.";
             } else {
-                $promoError = "Failed to update record. Please check permissions or database connection.";
+                $promoError = "Failed to update record.";
             }
         } else {
              $promoError = "Employee not found.";
@@ -89,7 +128,12 @@ $positions   = $posObj->getAllPositions();
 // Initial load variables
 $initialSearch = '';
 $initialSelectedDept = ''; 
-$allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch); 
+$rawEmployees = $employeeManager->getAllEmployeesDetails($initialSearch); 
+
+// Filter out "Deleted" users for the initial view
+$allEmployees = array_filter($rawEmployees, function($emp) {
+    return !isset($emp['Status']) || $emp['Status'] !== 'Deleted';
+});
 
 ?>
 
@@ -101,7 +145,7 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
 <?php else: ?> 
 
 <style>
-    /* ... (CSS styles are kept as they were, assumed to be functional) ... */
+    /* ... (Your CSS styles) ... */
     :root {
         --primary-red: #b91c1c;
         --primary-hover: #991b1b;
@@ -241,7 +285,8 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
                         $e_dept = htmlspecialchars($emp['DepartmentName'] ?? 'N/A');
                         $e_pos = htmlspecialchars($emp['PositionName'] ?? 'N/A');
                         
-                        $jsData = json_encode([
+                        // PREPARE JSON DATA FOR MODALS
+                        $viewData = json_encode([
                             'id'        => $emp['EmployeeID'],
                             'full_name' => $emp['FirstName'] . ' ' . $emp['LastName'],
                             'first'     => $emp['FirstName'],
@@ -258,15 +303,15 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
                             'DepartmentID' => $emp['DepartmentID'], 
                             'PositionID' => $emp['PositionID']
                         ]);
-                        $safeViewData = htmlspecialchars($jsData, ENT_QUOTES, 'UTF-8');
+                        $safeViewData = htmlspecialchars($viewData, ENT_QUOTES, 'UTF-8');
 
-                        $jsEditData = json_encode([
+                        $editData = json_encode([
                             'id'      => $emp['EmployeeID'],
                             'pos'     => $emp['PositionID'],
                             'dept_id' => $emp['DepartmentID'],
                             'type'    => $emp['isTeaching']
                         ]);
-                        $safeEditData = htmlspecialchars($jsEditData, ENT_QUOTES, 'UTF-8');
+                        $safeEditData = htmlspecialchars($editData, ENT_QUOTES, 'UTF-8');
 
                         echo "<tr class='emp-row' onclick='openModal($safeViewData)'> 
                                 <td>{$e_id}</td> 
@@ -274,9 +319,15 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
                                 <td>{$e_dept}</td> 
                                 <td>{$e_pos}</td> 
                                 <td onclick='event.stopPropagation()'>
-                                    <button class='btn-icon btn-edit' onclick='openPromoteModal($safeEditData)' title='Promote / Edit'>
-                                        <i class='fas fa-edit'></i>
-                                    </button>
+                                    <div style='display: flex; gap: 8px;'>
+                                        <button class='btn-icon btn-edit' onclick='openPromoteModal($safeEditData)' title='Promote / Edit'>
+                                            <i class='fas fa-edit'></i>
+                                        </button>
+                                        
+                                        <button class='btn-icon btn-delete' onclick='openDeleteModal(\"{$e_id}\")' title='Delete' style='color: #dc2626;'>
+                                            <i class='fas fa-trash'></i>
+                                        </button>
+                                    </div>
                                 </td>
                               </tr>"; 
                     } 
@@ -398,9 +449,45 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
         </div>
     </div>
 
+    <div id="deleteModal" class="modal-overlay" style="display: none;" onclick="closeDeleteModal(event)">
+        <div class="profile-card" style="max-width: 400px;">
+            <button class="close-btn" onclick="document.getElementById('deleteModal').style.display='none'">&times;</button>
+            
+            <div style="padding: 20px 30px 10px; border-bottom: 1px solid #eee;">
+                <h2 style="margin:0; color:var(--primary-red); font-size:1.5rem;">Delete Employee</h2>
+                <p style="margin:5px 0 0; color:#666; font-size:0.9rem;">Confirm action.</p>
+            </div>
+
+            <div style="padding: 30px;">
+                <form method="POST">
+                    <input type="hidden" name="action" value="delete_employee">
+                    <input type="hidden" name="delete_id" id="delete_input_id">
+
+                    <div style="text-align: center; margin-bottom: 25px;">
+                        <p style="color: #4b5563; font-size: 1rem; line-height: 1.5;">
+                            Are you sure you want to delete this employee record?<br>
+                            <span style="color: #dc2626; font-size: 0.85rem; font-weight: bold;">Status will be set to 'Deleted'.</span>
+                        </p>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; gap: 10px;">
+                        <button type="button" onclick="document.getElementById('deleteModal').style.display='none'" 
+                                style="flex: 1; padding:10px; background:#f3f4f6; border:none; border-radius:6px; cursor:pointer; font-weight:600; color:#555;">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                                style="flex: 1; padding:10px; background:var(--primary-red); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                            Yes, Delete
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 
     <script>
-        // --- Modal Logic (openModal, closeModal, openPromoteModal, closePromoteModal) ---
+        // --- Modal Logic ---
         function openModal(data) {
             document.getElementById('m_id').innerText = data.id;
             document.getElementById('m_fullname').innerText = data.full_name;
@@ -415,7 +502,7 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
 
             var imgElement = document.getElementById('m_pic');
             if (data.pic && data.pic.trim() !== "" && data.pic !== "N/A") { 
-                imgElement.src = data.pic.startsWith('assets') ? data.pic : "assets/" + data.pic;
+                imgElement.src = data.pic.startsWith('assets') ? data.pic : "" + data.pic;
             } else {
                 imgElement.src = "assets/image/default-avatar.png"; 
             }
@@ -442,6 +529,18 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
             }
         }
 
+        // FIXED: ADDED DELETE MODAL FUNCTIONS
+        function openDeleteModal(id) {
+            document.getElementById('delete_input_id').value = id;
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function closeDeleteModal(event) {
+            if (event.target.id === 'deleteModal') {
+                document.getElementById('deleteModal').style.display = 'none';
+            }
+        }
+
         // --- REAL-TIME SEARCH IMPLEMENTATION ---
 
         const searchInput = document.getElementById('searchQuery');
@@ -455,38 +554,33 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
             const query = searchInput.value;
             const deptId = deptFilter.value;
 
-            if (query.length < 2 && query.length > 0) {
-                searchTimeout = setTimeout(fetchEmployeeList, 300);
-                return; 
-            }
+            // Allow empty query to reset list, but throttle typing
+            searchTimeout = setTimeout(() => {
+                tableBody.innerHTML = '<tr><td colspan="5" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading results...</td></tr>';
+                
+                const params = new URLSearchParams({
+                    action: 'search_employees',
+                    search_query: query,
+                    dept_filter: deptId
+                });
 
-            tableBody.innerHTML = '<tr><td colspan="5" class="loading"><i class="fas fa-spinner fa-spin"></i> Loading results...</td></tr>';
-            
-            const params = new URLSearchParams({
-                action: 'search_employees',
-                search_query: query,
-                dept_filter: deptId
-            });
-
-            fetch('adminhome.php?' + params.toString(), {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok: ' + response.statusText);
-                }
-                return response.json();
-            })
-            .then(data => {
-                renderTable(data);
-            })
-            .catch(error => {
-                console.error('AJAX Fetch Error:', error);
-                tableBody.innerHTML = '<tr><td colspan="5" class="loading" style="color:red;">Error fetching data. Please refresh or check connection.</td></tr>';
-            });
+                fetch('adminhome.php?' + params.toString(), {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    // This will now work because PHP is returning clean JSON
+                    return response.json();
+                })
+                .then(data => {
+                    renderTable(data);
+                })
+                .catch(error => {
+                    console.error('AJAX Fetch Error:', error);
+                    tableBody.innerHTML = '<tr><td colspan="5" class="loading" style="color:red;">Error fetching data. Please refresh.</td></tr>';
+                });
+            }, 300);
         }
         
         function renderTable(employees) {
@@ -497,17 +591,50 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
             } else {
                 employees.forEach(emp => {
                     const fullName = `${emp.LastName || ''}, ${emp.FirstName || ''}`;
-                    const viewData = JSON.stringify(emp).replace(/'/g, "\\'"); 
+                    
+                    // Construct View Object
+                    const viewObj = {
+                        id: emp.EmployeeID,
+                        full_name: fullName,
+                        dept_name: emp.DepartmentName || 'N/A',
+                        pos_name: emp.PositionName || 'N/A',
+                        email: emp.Email,
+                        contact: emp.ContactNumber,
+                        dob: emp.DOB,
+                        sex: emp.Sex,
+                        hired: emp.DateHired,
+                        teaching: emp.isTeaching,
+                        pic: emp.profilePic,
+                        DepartmentID: emp.DepartmentID,
+                        PositionID: emp.PositionID
+                    };
+                    
+                    // Construct Edit Object
+                    const editObj = {
+                        id: emp.EmployeeID,
+                        pos: emp.PositionID,
+                        dept_id: emp.DepartmentID,
+                        type: emp.isTeaching
+                    };
 
-                    html += `<tr class='emp-row' onclick='openModal(JSON.parse("${viewData}"))'>
+                    // Safe Escape for HTML attributes
+                    const viewStr = JSON.stringify(viewObj).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+                    const editStr = JSON.stringify(editObj).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+
+                    html += `<tr class='emp-row' onclick='openModal(${viewStr})'>
                                 <td>${emp.EmployeeID}</td>
                                 <td>${fullName}</td>
                                 <td>${emp.DepartmentName || 'N/A'}</td>
                                 <td>${emp.PositionName || 'N/A'}</td>
                                 <td onclick='event.stopPropagation()'>
-                                    <button class='btn-icon btn-edit' onclick='openPromoteModal(JSON.parse("${viewData}"))' title='Promote / Edit'>
-                                        <i class='fas fa-edit'></i>
-                                    </button>
+                                    <div style='display: flex; gap: 8px;'>
+                                        <button class='btn-icon btn-edit' onclick='openPromoteModal(${editStr})' title='Promote / Edit'>
+                                            <i class='fas fa-edit'></i>
+                                        </button>
+                                        <button class='btn-icon btn-delete' onclick='openDeleteModal("${emp.EmployeeID}")' title='Delete' style='color: #dc2626;'>
+                                            <i class='fas fa-trash'></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>`;
                 });
@@ -516,13 +643,7 @@ $allEmployees = $employeeManager->getAllEmployeesDetails($initialSearch);
             tableBody.innerHTML = html;
         }
 
-        // Event listener for search bar input
-        searchInput.addEventListener('input', () => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(fetchEmployeeList, 300);
-        });
-
-        // Event listener for department filter change
+        searchInput.addEventListener('input', fetchEmployeeList);
         deptFilter.addEventListener('change', fetchEmployeeList);
     </script>
 <?php endif; ?>
