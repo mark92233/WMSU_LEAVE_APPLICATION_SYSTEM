@@ -86,7 +86,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     
     $action = $_POST["action"] ?? "";
 
-    /* -----------------------------------------
+   /* -----------------------------------------
         CHECK ID (Step 1)
     ----------------------------------------- */
     if ($action === "check") {
@@ -119,10 +119,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $idError = "Your account request is still pending admin approval.";
                 } elseif ($status === "Inactive") {
                     $idError = "This account is deactivated. Please contact the administrator.";
+                } elseif ($status === "Delete") {
+                    $idError = "This account has been deleted by the admin. Try to contact HR.";
                 }
             }
         }
     }
+
 
     /* -----------------------------------------
         REGISTER PENDING ACCOUNT (Step 2)
