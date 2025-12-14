@@ -240,7 +240,14 @@ class AdminRegistration {
         $query->bindParam(":employeeID", $employeeID);
         return $query->execute();
     }
-
+    
+   public function softDelete($employeeID) {
+    // Now we explicitly mark them as 'Deleted'
+    $sql = "UPDATE adminregistration SET Status = 'Deleted' WHERE EmployeeID = :employeeID";
+    $query = $this->db->connect()->prepare($sql);
+    $query->bindParam(":employeeID", $employeeID);
+    return $query->execute();
+}
     // Get all pending accounts
     public function getPendingAccounts() {
         $sql = "SELECT * FROM adminregistration WHERE Status = 'Pending' ORDER BY DateAdded DESC";
