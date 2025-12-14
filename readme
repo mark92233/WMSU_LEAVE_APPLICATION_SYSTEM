@@ -1,11 +1,158 @@
-For testing purposes:
-    The adding of account is on the path: accountSetup/adminDraft
-    From there you can register back to index (Register first then login)
+WMSU Faculty Leave Application System
 
-    Accounts present: 
-    Instructor: ID: 202403655 Password: mja123
-    Department Head: ID: 20240908 Password: joan123
-    Dean ID: 20240158 Password: jhon123
-    Admin: ID: 20250905 Password: mat123
+📖 Project Overview
 
-    
+The WMSU Faculty Leave Application System is a secure, role-based enterprise web application designed to digitize the leave management process for university faculty. It replaces traditional paper-based workflows with a streamlined digital ecosystem, automating credit calculation, application routing, approval logic, and record-keeping.
+
+This system utilizes a Closed-Loop "Gatekeeper" Registration Model, ensuring that only verified faculty members with valid Employee IDs can access the platform.
+
+🚀 Key Features
+
+🔐 Security & Authentication
+
+Gatekeeper Registration: No public sign-up. Employees must verify their identity using a valid Faculty ID and Email pre-approved by HR.
+
+Admin Approval: New accounts remain in a "Pending" state until explicitly activated by an Admin.
+
+Secure Password Reset: Token-based email reset system (links expire in 1 hour).
+
+Session Security: Strict session destruction upon logout to prevent unauthorized access via browser back buttons.
+
+🏦 The "Banking" Credit System (Incremental Accrual)
+
+A robust mathematical engine handles leave credits to ensure accuracy during salary grade changes or promotions.
+
+Incremental Logic: Instead of recalculating history, the system calculates credits earned only since the last update and deposits them into the running balance.
+
+Safe Promotion: When an employee is promoted, the system "cashes out" pending credits at the old rate before switching to the new higher rate.
+
+Safe Deduction: Approved leaves are subtracted from the balance without disrupting the accrual timeline.
+
+📝 Leave Management
+
+Smart Calendar: Automatically calculates leave duration while excluding weekends.
+
+Evidence Handling: Enforces file attachments (e.g., Medical Certificates) for specific leave types like Sick Leave.
+
+Approval Workflow: Admins/Deans can Approve or Reject applications with remarks.
+
+PDF Generation: Automatically generates a printable PDF of the approved leave form for physical filing.
+
+🔔 Notifications
+
+Email Alerts: Powered by PHPMailer. Sends alerts for account activation, leave decisions, and promotions.
+
+In-App Notification Bell: A Facebook-style notification center using AJAX to show real-time updates for Pending Requests (Admin) or Application Results (User).
+
+📊 Admin Dashboard
+
+Analytics: Visual charts (Chart.js) for leave status distribution and monthly trends.
+
+Employee Master List: Searchable database of all faculty members.
+
+Bulk Import: CSV upload feature to batch-register new employees (Status: Unclaimed).
+
+Employment Management: Secure interface to Promote employees or change departments.
+
+🛠️ Technology Stack
+
+Frontend: HTML5, CSS3, Tailwind CSS, JavaScript (AJAX).
+
+Backend: Native PHP 8.x (Object-Oriented Architecture).
+
+Database: MySQL/MariaDB (Relational Schema with Foreign Keys & Transactions).
+
+Libraries:
+
+PHPMailer (Email Services)
+
+FPDF (PDF Generation)
+
+Chart.js (Data Visualization)
+
+Lucide (Iconography)
+
+⚙️ Installation & Setup
+
+1. Database Configuration
+
+Open your database management tool (e.g., PHPMyAdmin).
+
+Create a new database named employee_leave_db.
+
+Import the provided employee_leave_db.sql file to generate tables and relationships.
+
+(Optional) Run the provided seed queries to create a default Admin account.
+
+2. Application Setup
+
+Clone/Download the project into your local server directory (e.g., xampp/htdocs/wmsu-leave).
+
+Navigate to dbRelated/db_connect.php.
+
+Update the database credentials if necessary:
+
+private $host = "localhost";
+private $db_name = "employee_leave_db";
+private $username = "root";
+private $password = "";
+
+
+3. SMTP Configuration (For Email)
+
+Navigate to dbRelated/EmailSender.php.
+
+Update the SMTP settings with your credentials:
+
+$this->mail->Host       = 'smtp.gmail.com';
+$this->mail->Username   = 'your-email@gmail.com';
+$this->mail->Password   = 'your-app-password';
+
+
+📂 Project Structure
+
+/
+├── assets/                 # Images, CSS, static files
+├── dbRelated/              # Backend Logic & Classes
+│   ├── db_connect.php      # Database Connection
+│   ├── operation.php       # Core Logic (Managers)
+│   ├── EmailSender.php     # Mailer Class
+│   ├── LeavePdfGenerator.php # PDF Logic
+├── uploadedFiles/          # User attachments (Medical Certs)
+├── index.php               # Login / Landing Page
+├── home.php                # Employee Dashboard
+├── adminhome.php           # Admin Dashboard (Master Controller)
+└── pages/                  # Dynamic Content Views
+    ├── dashboard.php
+    ├── apply_leave.php
+    ├── request.php         # Employee Management
+    └── leave_list.php
+
+
+💡 How to Use
+
+For New Employees
+
+Go to the Login Page.
+
+Enter your Faculty ID.
+
+If your ID is pre-loaded by HR (Status: Unclaimed), enter your Email to verify identity and claim the account.
+
+If your ID is unknown, enter your Email to submit a Registration Request to the Admin.
+
+For Admins (Promoting an Employee)
+
+Log in to the Admin Dashboard.
+
+Navigate to Employees.
+
+Click the Edit (Pencil) icon next to an employee.
+
+Update their Position/Rank and click Save.
+
+System Action: The system will automatically calculate pending credits at the old rate, save them, update the position, and email the employee.
+
+📄 License
+
+This project is developed
